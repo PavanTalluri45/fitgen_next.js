@@ -19,7 +19,6 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 
 export function SignupForm({ ...props }) {
-  const router = useRouter();
   const supabase = createClient();
 
   const {
