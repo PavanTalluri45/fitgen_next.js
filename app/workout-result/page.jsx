@@ -359,13 +359,15 @@ export default function WorkoutResults() {
                             </Button>
                         )}
 
-                        <Button
-                            onClick={() => router.push('/history')}
-                            size="xl"
-                            className="px-8 py-4 text-lg font-semibold rounded-full bg-gray-700 text-white hover:bg-gray-600 transition-all duration-300"
-                        >
-                            View History
-                        </Button>
+                        <a href="/history">
+                            <Button
+
+                                size="xl"
+                                className="px-8 py-4 text-lg font-semibold rounded-full bg-gray-700 text-white hover:bg-gray-600 transition-all duration-300"
+                            >
+                                View History
+                            </Button>
+                        </a>
                     </div>
                     {/* Rate limit alert — shown above the disabled button */}
                     {!canGenerate && rateLimitLabel && (

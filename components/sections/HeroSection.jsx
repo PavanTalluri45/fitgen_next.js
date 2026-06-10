@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/ui/UserAvatar";
@@ -11,7 +10,6 @@ import { toast } from "sonner";
 
 export default function HeroSection() {
     const { user, loading } = useAuth();
-    const router = useRouter();
 
     // Rate limit state — only fetched once the user is confirmed authenticated
     const [rateLimitInfo, setRateLimitInfo] = useState(null);
@@ -34,38 +32,32 @@ export default function HeroSection() {
         }
     }, [loading, user, fetchRateLimit]);
 
-    const handleGeneratePlan = () => {
-        // Guest users → go to login
-        if (!user) {
-            router.push("/login");
-            return;
-        }
-
-        // Authenticated but still within 72-hour window → show toast, don't navigate
-        if (rateLimitInfo && !rateLimitInfo.canGenerate) {
+    const handleGeneratePlan = (e) => {
+        // Authenticated but still within 72-hour window -> show toast, don't navigate
+        if (user && rateLimitInfo && !rateLimitInfo.canGenerate) {
+            e.preventDefault();
             toast.error("Plan generation unavailable", {
                 description: `You already generated a workout plan. Your next plan will be available in ${rateLimitInfo.remainingTimeLabel}.`,
                 duration: 5000,
             });
-            return;
         }
-
-        // Good to go
-        router.push("/plan-builder");
     };
+
+    // Guest -> /login, authenticated -> /plan-builder
+    const planHref = !user ? "/login" : "/plan-builder";
 
     return (
         <section className="relative w-full min-h-screen h-auto flex flex-col items-center justify-center overflow-hidden py-16 md:h-screen md:py-0">
             {/* Navbar */}
-            <div className="absolute top-8 left-4 sm:left-6 lg:left-8 right-4 sm:right-6 lg:right-8 z-20 flex items-center justify-between text-white">
+            <div className="absolute top-5 sm:top-8 left-4 sm:left-6 lg:left-8 right-4 sm:right-6 lg:right-8 z-20 flex items-center justify-between text-white min-w-0">
                 {/* Logo */}
-                <div className="flex items-center space-x-2">
-                    <Dumbbell className="h-10 w-10 text-[#B1F82A]" />
-                    <span className="text-3xl font-bold">FitGen</span>
+                <div className="flex items-center space-x-2 shrink-0">
+                    <Dumbbell className="h-8 w-8 sm:h-10 sm:w-10 text-[#B1F82A]" />
+                    <span className="text-2xl sm:text-3xl font-bold">FitGen</span>
                 </div>
 
                 {/* Auth Controls */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                     {!loading && (
                         <>
                             {user ? (
@@ -76,14 +68,14 @@ export default function HeroSection() {
                                 <>
                                     <a href="/login">
                                         <Button
-                                            className="h-11 rounded-full border border-white/20 text-white bg-transparent hover:bg-[#B1F82A] hover:text-black hover:border-[#B1F82A] transition-all duration-300 px-6 font-semibold"
+                                            className="h-9 sm:h-11 rounded-full border border-white/20 text-white bg-transparent hover:bg-[#B1F82A] hover:text-black hover:border-[#B1F82A] transition-all duration-300 px-4 sm:px-6 text-sm sm:text-base font-semibold"
                                         >
                                             Login
                                         </Button>
                                     </a>
                                     <a href="/signup">
                                         <Button
-                                            className="h-11 rounded-full bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 px-6 font-semibold shadow-lg shadow-[#B1F82A]/20 transition-all duration-300"
+                                            className="h-9 sm:h-11 rounded-full bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 px-4 sm:px-6 text-sm sm:text-base font-semibold shadow-lg shadow-[#B1F82A]/20 transition-all duration-300"
                                         >
                                             Sign Up
                                         </Button>
@@ -107,7 +99,7 @@ export default function HeroSection() {
             </div>
 
             {/* Content */}
-            <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-center pt-24 md:pt-0">
+            <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-center pt-28 sm:pt-24 md:pt-0">
                 <div className="max-w-lg">
                     <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-[0.95] mt-10">
                         Unlock Your <span className="text-[#B1F82A]">Potential</span>
@@ -119,13 +111,14 @@ export default function HeroSection() {
                         Start your transformation today!
                     </p>
                     <div className="mt-8">
-                        <Button
-                            size="xl"
-                            onClick={handleGeneratePlan}
-                            className="bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 transition-all duration-300 shadow-lg hover:shadow-xl"
-                        >
-                            Generate workout plan
-                        </Button>
+                        <a href={planHref} onClick={handleGeneratePlan}>
+                            <Button
+                                size="xl"
+                                className="bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 transition-all duration-300 shadow-lg hover:shadow-xl"
+                            >
+                                Generate workout plan
+                            </Button>
+                        </a>
                     </div>
                 </div>
 

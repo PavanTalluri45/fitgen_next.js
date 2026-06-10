@@ -27,7 +27,13 @@ export default function RootLayout({ children }) {
       <body className="min-h-full flex flex-col">
         <AuthProvider>
           {children}
-          <Toaster />
+          <Toaster
+            toastOptions={{
+              style: {
+                maxWidth: "calc(100vw - 2rem)",
+              },
+            }}
+          />
         </AuthProvider>
       </body>
     </html>
