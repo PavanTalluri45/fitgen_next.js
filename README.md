@@ -256,17 +256,6 @@ Cloud-Native Serverless Architecture
 
 ---
 
-# 🔮 Future Enhancements
-
-* Nutrition Plan Generation
-* Progress Tracking
-* Exercise Video Library
-* Subscription Plans
-* Fitness Analytics Dashboard
-* Wearable Device Integration
-* Mobile Application
-
----
 
 # 🛠️ Tech Stack
 
