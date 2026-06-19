@@ -8,6 +8,7 @@ import { UserAvatar } from "@/components/ui/UserAvatar";
 import { useAuth } from "@/context/AuthContext";
 import { Dumbbell, Activity, Expand as Stretch } from "lucide-react";
 import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function HeroSection() {
     const { user, loading } = useAuth();
@@ -130,14 +131,17 @@ export default function HeroSection() {
                         Start your transformation today!
                     </p>
                     <div className="mt-8">
-                        <Button
-                            size="xl"
-                            onClick={handleGeneratePlan}
-                            disabled={isButtonLoading}
-                            className="bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-70 disabled:cursor-wait"
-                        >
-                            {isButtonLoading ? "Checking..." : "Generate workout plan"}
-                        </Button>
+                        {isButtonLoading ? (
+                            <Skeleton className="h-12 w-52 rounded-full bg-[#B1F82A]/30" />
+                        ) : (
+                            <Button
+                                size="xl"
+                                onClick={handleGeneratePlan}
+                                className="bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 transition-all duration-300 shadow-lg hover:shadow-xl"
+                            >
+                                Generate workout plan
+                            </Button>
+                        )}
                     </div>
                 </div>
 

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 
@@ -84,14 +85,17 @@ export default function CallToAction() {
                                 and take the first step towards a stronger, healthier you.
                             </p>
                             <div className="mt-8">
-                                <Button
-                                    size="xl"
-                                    onClick={handleGeneratePlan}
-                                    disabled={isButtonLoading}
-                                    className="px-8 py-3 bg-[#B1F82A] text-black font-semibold rounded-full hover:bg-[#B1F82A]/90 transition-colors shadow-lg disabled:opacity-70 disabled:cursor-wait"
-                                >
-                                    {isButtonLoading ? "Checking..." : "Generate New Plan"}
-                                </Button>
+                                {isButtonLoading ? (
+                                    <Skeleton className="h-12 w-48 rounded-full bg-[#B1F82A]/30" />
+                                ) : (
+                                    <Button
+                                        size="xl"
+                                        onClick={handleGeneratePlan}
+                                        className="px-8 py-3 bg-[#B1F82A] text-black font-semibold rounded-full hover:bg-[#B1F82A]/90 transition-colors shadow-lg"
+                                    >
+                                        Generate New Plan
+                                    </Button>
+                                )}
                             </div>
                         </div>
 
