@@ -1,27 +1,33 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 
 export default function CallToAction() {
     const { user, loading } = useAuth();
-
-    // Rate limit state — only fetched once the user is confirmed authenticated
+    const router = useRouter();
     const [rateLimitInfo, setRateLimitInfo] = useState(null);
+    const [rateLimitLoading, setRateLimitLoading] = useState(false);
+    const navigating = useRef(false);
 
     const fetchRateLimit = useCallback(async () => {
+        setRateLimitLoading(true);
         try {
             const res = await fetch("/api/check-rate-limit");
             if (res.ok) {
                 const data = await res.json();
                 setRateLimitInfo(data);
+                return data;
             }
         } catch {
-            // Fail open — don't block the button if the check itself errors
+        } finally {
+            setRateLimitLoading(false);
         }
+        return null;
     }, []);
 
     useEffect(() => {
@@ -30,19 +36,36 @@ export default function CallToAction() {
         }
     }, [loading, user, fetchRateLimit]);
 
-    const handleGeneratePlan = (e) => {
-        // Authenticated but still within 72-hour window → show toast, don't navigate
-        if (user && rateLimitInfo && !rateLimitInfo.canGenerate) {
-            e.preventDefault();
-            toast.error("Plan generation unavailable", {
-                description: `You already generated a workout plan. Your next plan will be available in ${rateLimitInfo.remainingTimeLabel}.`,
-                duration: 5000,
-            });
+    const handleGeneratePlan = useCallback(async () => {
+        if (!user) {
+            router.push("/login");
+            return;
         }
-    };
 
-    // Guest -> /login, authenticated -> /plan-builder
-    const planHref = !user ? "/login" : "/plan-builder";
+        if (navigating.current) return;
+        navigating.current = true;
+
+        try {
+            let info = rateLimitInfo;
+            if (info === null) {
+                info = await fetchRateLimit();
+            }
+
+            if (info && !info.canGenerate) {
+                toast.error("Plan generation unavailable", {
+                    description: `You already generated a workout plan. Your next plan will be available in ${info.remainingTimeLabel}.`,
+                    duration: 5000,
+                });
+                return;
+            }
+
+            router.push("/plan-builder");
+        } finally {
+            navigating.current = false;
+        }
+    }, [user, rateLimitInfo, fetchRateLimit, router]);
+
+    const isButtonLoading = !loading && user && (rateLimitLoading && rateLimitInfo === null);
 
     return (
         <section className="bg-[#0C0C0C] py-20 sm:py-32">
@@ -61,14 +84,14 @@ export default function CallToAction() {
                                 and take the first step towards a stronger, healthier you.
                             </p>
                             <div className="mt-8">
-                                <a href={planHref} onClick={handleGeneratePlan}>
-                                    <Button
-                                        size="xl"
-                                        className="px-8 py-3 bg-[#B1F82A] text-black font-semibold rounded-full hover:bg-[#B1F82A]/90 transition-colors shadow-lg"
-                                    >
-                                        Generate New Plan
-                                    </Button>
-                                </a>
+                                <Button
+                                    size="xl"
+                                    onClick={handleGeneratePlan}
+                                    disabled={isButtonLoading}
+                                    className="px-8 py-3 bg-[#B1F82A] text-black font-semibold rounded-full hover:bg-[#B1F82A]/90 transition-colors shadow-lg disabled:opacity-70 disabled:cursor-wait"
+                                >
+                                    {isButtonLoading ? "Checking..." : "Generate New Plan"}
+                                </Button>
                             </div>
                         </div>
 

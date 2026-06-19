@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -30,11 +31,9 @@ import {
 } from 'lucide-react';
 
 // ─── localStorage draft key ───────────────────────────────────────────────────
-
 const DRAFT_KEY = 'fitgen-questionnaire-draft';
 
 // ─── Status definitions ───────────────────────────────────────────────────────
-
 const STATUS_MESSAGES = {
     "saving-profile": "Saving your profile...",
     "analysing-profile": "Analysing your profile...",
@@ -56,10 +55,8 @@ const STATUS_ORDER = [
 ];
 
 // ─── Static data ──────────────────────────────────────────────────────────────
-
 const focusAreasData = ['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core'];
 
-// Goals for which "Focus Areas" is relevant
 const GOAL_SHOWS_FOCUS_AREAS = [
     'muscle-gain',
     'strength',
@@ -67,7 +64,6 @@ const GOAL_SHOWS_FOCUS_AREAS = [
     'fat-loss',
 ];
 
-// Goals that show target weight field
 const GOAL_SHOWS_TARGET_WEIGHT = ['fat-loss', 'body-recomposition'];
 
 const equipmentData = [
@@ -109,9 +105,8 @@ const exercisePreferenceOptions = [
     { id: 'functional', label: 'Functional Fitness' },
 ];
 
-
-
 const DEFAULT_FORM_DATA = {
+    // Step 1 — Body Measurements
     weight: '70',
     height: '5.9',
 
@@ -122,13 +117,13 @@ const DEFAULT_FORM_DATA = {
     fitnessLevel: '',
     focusAreas: [],
     targetWeight: '',
-    daysPerWeek: 3,
+    daysPerWeek: 3,         // slider returns a number — this stays numeric
 
     // Step 3 — Workout Preferences
     workoutLocation: '',
     sessionDuration: '',
     activityLevel: '',
-    equipment: {},
+    equipment: {},          // { [id]: boolean }
 
     // Step 4 — Health & Training
     injuries: [],
@@ -139,8 +134,6 @@ const DEFAULT_FORM_DATA = {
 };
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
-
-// Step 1 — Body Measurements
 const validateStep1 = (formData) => {
     const weight = parseFloat(formData.weight);
     if (!formData.weight || isNaN(weight) || weight <= 0)
@@ -157,7 +150,6 @@ const validateStep1 = (formData) => {
     return null;
 };
 
-// Step 2 — About You (age, gender, goal, fitnessLevel, focusAreas conditional)
 const validateStep2 = (formData) => {
     const age = parseInt(formData.age, 10);
     if (!formData.age || isNaN(age))
@@ -175,7 +167,6 @@ const validateStep2 = (formData) => {
     return null;
 };
 
-// Step 3 — Workout Preferences
 const validateStep3 = (formData) => {
     if (!formData.workoutLocation)
         return { title: 'Workout location required', description: 'Please select where you will primarily work out.' };
@@ -186,11 +177,45 @@ const validateStep3 = (formData) => {
     return null;
 };
 
-// Step 4 — Health & Training (all optional)
 const validateStep4 = () => null;
 
-// ─── Loading Overlay ──────────────────────────────────────────────────────────
+function buildPayload(formData) {
+    const equipmentList = Object.entries(formData.equipment || {})
+        .filter(([, selected]) => selected)
+        .map(([key]) => key);
 
+    return {
+        // Numeric fields — explicitly coerced
+        age: Number(formData.age),
+        weight: Number(formData.weight),
+        height: Number(formData.height),
+        daysPerWeek: Number(formData.daysPerWeek),
+        targetWeight: formData.targetWeight ? Number(formData.targetWeight) : null,
+
+        // String fields — passed as-is
+        gender: formData.gender,
+        goal: formData.goal,
+        fitnessLevel: formData.fitnessLevel,
+        workoutLocation: formData.workoutLocation,
+        sessionDuration: formData.sessionDuration,
+        activityLevel: formData.activityLevel,
+
+        // Array fields — always arrays
+        focusAreas: Array.isArray(formData.focusAreas) ? formData.focusAreas : [],
+        injuries: Array.isArray(formData.injuries) ? formData.injuries : [],
+        medicalConditions: Array.isArray(formData.medicalConditions) ? formData.medicalConditions : [],
+        exercisePreferences: Array.isArray(formData.exercisePreferences) ? formData.exercisePreferences : [],
+
+        // Equipment is expanded to an object for the route (which flattens it)
+        equipment: formData.equipment || {},
+
+        // Free text — nullable
+        injuryDetails: formData.injuryDetails || null,
+        medicalConditionDetails: formData.medicalConditionDetails || null,
+    };
+}
+
+// ─── Loading Overlay ──────────────────────────────────────────────────────────
 const LoadingOverlay = ({ status }) => {
     const currentIndex = STATUS_ORDER.indexOf(status);
 
@@ -211,7 +236,6 @@ const LoadingOverlay = ({ status }) => {
             />
 
             <div className="relative w-full max-w-md mx-4">
-                {/* Spinner ring */}
                 <div className="flex justify-center mb-10">
                     <div className="relative w-20 h-20">
                         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 80 80">
@@ -272,8 +296,6 @@ const LoadingOverlay = ({ status }) => {
 };
 
 // ─── Shared sub-components ────────────────────────────────────────────────────
-
-/** Checkbox row used for injuries, medical conditions, and exercise preferences */
 const CheckboxRow = ({ id, label, checked, onCheckedChange }) => (
     <label
         htmlFor={id}
@@ -291,8 +313,6 @@ const selectCls = "w-full bg-gray-800 border-gray-700 text-white mt-2 rounded-no
 const selectContentCls = "bg-gray-800 text-white border-gray-700 rounded-none border";
 
 // ─── Step 1 — Body Measurements ───────────────────────────────────────────────
-
-/** Simple weight input: kg only, no unit toggle */
 const WeightInput = ({ value, onValueChange }) => {
     const handleIncrement = () => onValueChange((Number(value) + 1).toString());
     const handleDecrement = () => onValueChange(Math.max(0, Number(value) - 1).toString());
@@ -311,15 +331,14 @@ const WeightInput = ({ value, onValueChange }) => {
                     style={{ MozAppearance: 'textfield' }}
                 />
                 <div className="flex flex-col gap-2">
-                    <motion.button onClick={handleIncrement} className="p-2 bg-gray-700/50 rounded-full hover:bg-gray-600 transition-colors" whileTap={{ scale: 0.9 }}>
+                    <motion.button type="button" onClick={handleIncrement} className="p-2 bg-gray-700/50 rounded-full hover:bg-gray-600 transition-colors" whileTap={{ scale: 0.9 }}>
                         <ChevronUp size={24} />
                     </motion.button>
-                    <motion.button onClick={handleDecrement} className="p-2 bg-gray-700/50 rounded-full hover:bg-gray-600 transition-colors" whileTap={{ scale: 0.9 }}>
+                    <motion.button type="button" onClick={handleDecrement} className="p-2 bg-gray-700/50 rounded-full hover:bg-gray-600 transition-colors" whileTap={{ scale: 0.9 }}>
                         <ChevronDown size={24} />
                     </motion.button>
                 </div>
             </div>
-            {/* Static kg label */}
             <div className="flex gap-2 p-1 rounded-full">
                 <span className="px-4 py-1 rounded-full text-sm font-semibold bg-[#B1F82A] text-black">kg</span>
             </div>
@@ -327,7 +346,6 @@ const WeightInput = ({ value, onValueChange }) => {
     );
 };
 
-/** Single decimal height input in ft (e.g. 5.9) */
 const HeightInput = ({ value, onValueChange }) => {
     const handleIncrement = () => onValueChange((Math.round((Number(value) + 0.1) * 10) / 10).toString());
     const handleDecrement = () => {
@@ -350,15 +368,14 @@ const HeightInput = ({ value, onValueChange }) => {
                     style={{ MozAppearance: 'textfield' }}
                 />
                 <div className="flex flex-col gap-2">
-                    <motion.button onClick={handleIncrement} className="p-2 bg-gray-700/50 rounded-full hover:bg-gray-600 transition-colors" whileTap={{ scale: 0.9 }}>
+                    <motion.button type="button" onClick={handleIncrement} className="p-2 bg-gray-700/50 rounded-full hover:bg-gray-600 transition-colors" whileTap={{ scale: 0.9 }}>
                         <ChevronUp size={24} />
                     </motion.button>
-                    <motion.button onClick={handleDecrement} className="p-2 bg-gray-700/50 rounded-full hover:bg-gray-600 transition-colors" whileTap={{ scale: 0.9 }}>
+                    <motion.button type="button" onClick={handleDecrement} className="p-2 bg-gray-700/50 rounded-full hover:bg-gray-600 transition-colors" whileTap={{ scale: 0.9 }}>
                         <ChevronDown size={24} />
                     </motion.button>
                 </div>
             </div>
-            {/* Static ft label */}
             <div className="flex gap-2 p-1 rounded-full">
                 <span className="px-4 py-1 rounded-full text-sm font-semibold bg-[#B1F82A] text-black">ft</span>
             </div>
@@ -366,7 +383,6 @@ const HeightInput = ({ value, onValueChange }) => {
     );
 };
 
-// Step 1 card — no Back button (it's the first step)
 const BodyMeasurementForm = ({ formData, setFormData, onNext }) => (
     <div className="w-full max-w-2xl bg-gray-900/50 border border-gray-800 rounded-3xl py-[64px] px-6 sm:px-8 lg:px-10 shadow-2xl text-center">
         <h2 className="text-3xl font-bold text-white mb-12">
@@ -383,15 +399,14 @@ const BodyMeasurementForm = ({ formData, setFormData, onNext }) => (
             />
         </div>
         <div className="flex justify-center mt-12">
-            <Button onClick={onNext} size="xl" className="w-full sm:w-auto px-10 py-3 text-lg font-semibold rounded-full bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 transition-all duration-300 shadow-lg">
+            <Button type="button" onClick={onNext} size="xl" className="w-full sm:w-auto px-10 py-3 text-lg font-semibold rounded-full bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 transition-all duration-300 shadow-lg">
                 Next
             </Button>
         </div>
     </div>
 );
 
-// ─── Step 2 — Tell Us About Yourself (+ conditional Focus Areas) ──────────────
-
+// ─── Step 2 — Tell Us About Yourself ─────────────────────────────────────────
 const UserDetailsForm = ({
     formData,
     handleChange,
@@ -435,7 +450,7 @@ const UserDetailsForm = ({
                     </Select>
                 </div>
 
-                {/* Goal + Fitness level */}
+                {/* Goal + Fitness Level */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <Label className="text-gray-300">Fitness Goal *</Label>
@@ -467,7 +482,7 @@ const UserDetailsForm = ({
                     </div>
                 </div>
 
-                {/* Focus Areas — only visible when goal is muscle/strength-related */}
+                {/* Focus Areas */}
                 <AnimatePresence>
                     {showFocusAreas && (
                         <motion.div
@@ -476,9 +491,7 @@ const UserDetailsForm = ({
                             exit={{ opacity: 0, height: 0 }}
                             transition={{ duration: 0.3 }}
                         >
-                            <Label className="text-gray-300 mb-4 block">
-                                Areas to focus on *
-                            </Label>
+                            <Label className="text-gray-300 mb-4 block">Areas to focus on *</Label>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 {focusAreasData.map((area) => (
                                     <motion.button
@@ -502,7 +515,7 @@ const UserDetailsForm = ({
                     )}
                 </AnimatePresence>
 
-                {/* Target weight — conditional on fat-loss / body-recomposition (kg only) */}
+                {/* Target Weight */}
                 <AnimatePresence>
                     {showTargetWeight && (
                         <motion.div
@@ -511,11 +524,11 @@ const UserDetailsForm = ({
                             exit={{ opacity: 0, height: 0 }}
                             transition={{ duration: 0.3 }}
                         >
-                            <Label className="text-gray-300">Target Weight (kg)</Label>
+                            <Label htmlFor="targetWeight" className="text-gray-300">Target Weight (kg)</Label>
                             <Input
-                                type="number" name="targetWeight"
+                                type="number" id="targetWeight" name="targetWeight"
                                 value={formData.targetWeight} onChange={handleChange}
-                                placeholder="e.g., 75"
+                                placeholder="e.g., 75" min={20} max={500}
                                 className="bg-gray-800 border-gray-700 text-white placeholder-gray-500 mt-2 rounded-none border"
                             />
                         </motion.div>
@@ -524,8 +537,8 @@ const UserDetailsForm = ({
 
                 {/* Days per week */}
                 <div>
-                    <Label htmlFor="daysPerWeek" className="flex justify-between items-center text-gray-300">
-                        <span>Workout Days Per Week</span>
+                    <Label htmlFor="daysPerWeek" className="text-gray-300">
+                        Workout Days / Week:{' '}
                         <span className="text-[#B1F82A] font-bold text-lg">{formData.daysPerWeek}</span>
                     </Label>
                     <Slider
@@ -549,8 +562,7 @@ const UserDetailsForm = ({
     );
 };
 
-// ─── Step 3 — Workout Preferences + Equipment ─────────────────────────────────
-
+// ─── Step 3 — Workout Preferences ────────────────────────────────────────────
 const WorkoutPreferencesForm = ({
     formData,
     handleSelectChange,
@@ -564,7 +576,6 @@ const WorkoutPreferencesForm = ({
         </h2>
 
         <div className="space-y-8">
-            {/* Workout Location */}
             <div>
                 <Label className="text-gray-300">Workout Location *</Label>
                 <Select name="workoutLocation" onValueChange={(v) => handleSelectChange('workoutLocation', v)} value={formData.workoutLocation}>
@@ -579,7 +590,6 @@ const WorkoutPreferencesForm = ({
                 </Select>
             </div>
 
-            {/* Session Duration */}
             <div>
                 <Label className="text-gray-300">Session Duration *</Label>
                 <Select name="sessionDuration" onValueChange={(v) => handleSelectChange('sessionDuration', v)} value={formData.sessionDuration}>
@@ -594,7 +604,6 @@ const WorkoutPreferencesForm = ({
                 </Select>
             </div>
 
-            {/* Activity Level */}
             <div>
                 <Label className="text-gray-300">Activity Level (outside workouts) *</Label>
                 <Select name="activityLevel" onValueChange={(v) => handleSelectChange('activityLevel', v)} value={formData.activityLevel}>
@@ -608,7 +617,6 @@ const WorkoutPreferencesForm = ({
                 </Select>
             </div>
 
-            {/* Equipment */}
             <div>
                 <Label className="text-gray-300 mb-3 block">Available Equipment</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -624,7 +632,6 @@ const WorkoutPreferencesForm = ({
                 </div>
             </div>
 
-            {/* Navigation */}
             <div className="flex justify-between gap-4 mt-10">
                 <Button type="button" size="xl" onClick={onBack} className="flex-1 px-6 py-3 text-lg font-semibold rounded-full bg-gray-700 text-white hover:bg-gray-600 transition-all duration-300">
                     Back
@@ -638,7 +645,6 @@ const WorkoutPreferencesForm = ({
 );
 
 // ─── Step 4 — Health & Training ───────────────────────────────────────────────
-
 const HealthAndTrainingForm = ({
     formData,
     handleChange,
@@ -653,7 +659,6 @@ const HealthAndTrainingForm = ({
         </h2>
 
         <div className="space-y-8">
-            {/* Injuries */}
             <div>
                 <Label className="text-gray-300 mb-3 block">Any injuries or physical limitations?</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -678,7 +683,6 @@ const HealthAndTrainingForm = ({
                 )}
             </div>
 
-            {/* Medical Conditions */}
             <div>
                 <Label className="text-gray-300 mb-3 block">Any medical conditions?</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -703,7 +707,6 @@ const HealthAndTrainingForm = ({
                 )}
             </div>
 
-            {/* Exercise Preferences */}
             <div>
                 <Label className="text-gray-300 mb-3 block">Preferred training styles (optional)</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -719,7 +722,6 @@ const HealthAndTrainingForm = ({
                 </div>
             </div>
 
-            {/* Navigation */}
             <div className="flex justify-between gap-4 mt-10">
                 <Button type="button" size="xl" onClick={onBack} disabled={isLoading} className="flex-1 px-6 py-3 text-lg font-semibold rounded-full bg-gray-700 text-white hover:bg-gray-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
                     Back
@@ -733,7 +735,6 @@ const HealthAndTrainingForm = ({
 );
 
 // ─── Root questionnaire component ─────────────────────────────────────────────
-
 const TOTAL_STEPS = 4;
 
 const QuestionnaireForm = ({ initialGender }) => {
@@ -743,6 +744,8 @@ const QuestionnaireForm = ({ initialGender }) => {
     const isLoading = status !== "idle";
 
     const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
+
+    const isSubmitting = useRef(false);
 
     // ── Restore draft from localStorage on mount ───────────────────────────
     useEffect(() => {
@@ -760,14 +763,14 @@ const QuestionnaireForm = ({ initialGender }) => {
         }
     }, []);
 
-    // ── Apply initialGender prop (overrides draft if provided) ────────────
+    // ── Apply initialGender prop ───────────────────────────────────────────
     useEffect(() => {
         if (initialGender) {
             setFormData((prev) => ({ ...prev, gender: initialGender }));
         }
     }, [initialGender]);
 
-    // ── Auto-save draft to localStorage whenever step or formData changes ──
+    // ── Auto-save draft to localStorage ───────────────────────────────────
     useEffect(() => {
         try {
             localStorage.setItem(DRAFT_KEY, JSON.stringify({ currentStep: step, formData }));
@@ -777,8 +780,7 @@ const QuestionnaireForm = ({ initialGender }) => {
     }, [step, formData]);
 
     // ── Step navigation ────────────────────────────────────────────────────
-
-    const handleNextStep = () => {
+    const handleNextStep = useCallback(() => {
         let error = null;
         if (step === 1) error = validateStep1(formData);
         if (step === 2) error = validateStep2(formData);
@@ -788,26 +790,26 @@ const QuestionnaireForm = ({ initialGender }) => {
             return;
         }
         setStep((prev) => Math.min(prev + 1, TOTAL_STEPS));
-    };
+    }, [step, formData]);
 
-    const handlePrevStep = () => setStep((prev) => Math.max(prev - 1, 1));
+    const handlePrevStep = useCallback(() => setStep((prev) => Math.max(prev - 1, 1)), []);
 
     // ── Field handlers ─────────────────────────────────────────────────────
-
-    const toggleFocusArea = (area) =>
+    const toggleFocusArea = useCallback((area) =>
         setFormData((prev) => ({
             ...prev,
             focusAreas: prev.focusAreas.includes(area)
                 ? prev.focusAreas.filter((a) => a !== area)
                 : [...prev.focusAreas, area],
-        }));
+        })), []);
 
-    const handleChange = (e) => {
+    const handleChange = useCallback((e) => {
         const { name, value } = e.target;
+        // FIX (Issue 2): Always spread into a new object — never mutate prev
         setFormData((prev) => ({ ...prev, [name]: value }));
-    };
+    }, []);
 
-    const handleSelectChange = (name, value) => {
+    const handleSelectChange = useCallback((name, value) => {
         setFormData((prev) => {
             const updated = { ...prev, [name]: value };
             if (name === 'goal' && !GOAL_SHOWS_FOCUS_AREAS.includes(value)) {
@@ -815,12 +817,13 @@ const QuestionnaireForm = ({ initialGender }) => {
             }
             return updated;
         });
-    };
+    }, []);
 
-    const handleSliderChange = (value) =>
-        setFormData((prev) => ({ ...prev, daysPerWeek: value[0] }));
+    const handleSliderChange = useCallback((value) =>
+        // Slider returns an array; value[0] is always a number — keep it numeric
+        setFormData((prev) => ({ ...prev, daysPerWeek: value[0] })), []);
 
-    const handleCheckboxChange = (field, id, checked) => {
+    const handleCheckboxChange = useCallback((field, id, checked) => {
         setFormData((prev) => {
             const current = prev[field];
             if (Array.isArray(current)) {
@@ -828,49 +831,31 @@ const QuestionnaireForm = ({ initialGender }) => {
                 if (id !== 'none' && checked) return { ...prev, [field]: [...current.filter(v => v !== 'none'), id] };
                 return { ...prev, [field]: current.filter(v => v !== id) };
             }
+            // equipment is an object of booleans
             return { ...prev, [field]: { ...current, [id]: checked } };
         });
-    };
+    }, []);
 
-    // ── Form submit → streaming /api/generate-workout ──────────────────────
-
-    const handleSubmit = async () => {
+    // ── Form submit ────────────────────────────────────────────────────────
+    const handleSubmit = useCallback(async () => {
         const error = validateStep4(formData);
         if (error) {
             toast.error(error.title, { description: error.description });
             return;
         }
 
+        // FIX (Issue 3): Synchronous ref check blocks double-click before
+        // any async work begins
+        if (isSubmitting.current) return;
+        isSubmitting.current = true;
+
         setStatus("saving-profile");
 
-        // Flatten equipment object → array of selected keys
-        const equipmentList = Object.entries(formData.equipment)
-            .filter(([, selected]) => selected)
-            .map(([key]) => key);
-
-        const payload = {
-            age: formData.age,
-            gender: formData.gender,
-            weight: formData.weight,
-            weightUnit: 'kg',
-            height: Number(formData.height),
-            heightUnit: 'ft',
-            goal: formData.goal,
-            fitnessLevel: formData.fitnessLevel,
-            targetWeight: formData.targetWeight,
-            targetWeightUnit: 'kg',
-            daysPerWeek: formData.daysPerWeek,
-            equipment: formData.equipment,
-            focusAreas: formData.focusAreas,
-            workoutLocation: formData.workoutLocation,
-            sessionDuration: formData.sessionDuration,
-            activityLevel: formData.activityLevel,
-            injuries: formData.injuries,
-            injuryDetails: formData.injuryDetails,
-            medicalConditions: formData.medicalConditions,
-            medicalConditionDetails: formData.medicalConditionDetails,
-            exercisePreferences: formData.exercisePreferences,
-        };
+        // FIX (Issue 2): Build payload from a snapshot with correct types.
+        // formData is captured via closure at the time handleSubmit runs —
+        // no stale-state risk because we're inside useCallback with formData
+        // in the dependency array.
+        const payload = buildPayload(formData);
 
         try {
             const res = await fetch('/api/generate-workout', {
@@ -879,10 +864,14 @@ const QuestionnaireForm = ({ initialGender }) => {
                 body: JSON.stringify(payload),
             });
 
+            // Handle non-streaming error responses (rate limit, auth, etc.)
             if (!res.ok || !res.body) {
                 const data = await res.json().catch(() => ({}));
-                toast.error('Failed to generate plan', { description: data.error || 'Something went wrong. Please try again.' });
+                toast.error('Failed to generate plan', {
+                    description: data.error || 'Something went wrong. Please try again.',
+                });
                 setStatus("idle");
+                isSubmitting.current = false;
                 return;
             }
 
@@ -896,7 +885,7 @@ const QuestionnaireForm = ({ initialGender }) => {
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split("\n");
-                buffer = lines.pop();
+                buffer = lines.pop(); // preserve incomplete trailing line
 
                 for (const line of lines) {
                     if (!line.trim()) continue;
@@ -904,13 +893,18 @@ const QuestionnaireForm = ({ initialGender }) => {
                     try { event = JSON.parse(line); } catch { continue; }
 
                     if (event.step === "error") {
-                        toast.error('Failed to generate plan', { description: event.message || 'Something went wrong. Please try again.' });
+                        toast.error('Failed to generate plan', {
+                            description: event.message || 'Something went wrong. Please try again.',
+                        });
                         setStatus("idle");
+                        isSubmitting.current = false;
                         return;
                     }
 
                     if (event.step === "completed") {
                         setStatus("completed");
+
+                        // Store result for the result page
                         sessionStorage.setItem('workoutPlan', JSON.stringify({
                             ...event.generatedPlan,
                             planId: event.planId,
@@ -935,7 +929,6 @@ const QuestionnaireForm = ({ initialGender }) => {
                             },
                         }));
 
-                        // ── Clear draft after successful generation ─────────
                         try { localStorage.removeItem(DRAFT_KEY); } catch { }
 
                         await new Promise((r) => setTimeout(r, 800));
@@ -950,13 +943,15 @@ const QuestionnaireForm = ({ initialGender }) => {
             }
         } catch (err) {
             console.error("Stream error:", err);
-            toast.error('Network error', { description: 'Could not reach the server. Check your connection and try again.' });
+            toast.error('Network error', {
+                description: 'Could not reach the server. Check your connection and try again.',
+            });
             setStatus("idle");
+            isSubmitting.current = false;
         }
-    };
+    }, [formData, router]);
 
-    // ── Animation ──────────────────────────────────────────────────────────
-
+    // ── Animation variants ─────────────────────────────────────────────────
     const formVariants = {
         hidden: { opacity: 0, x: '100%' },
         visible: { opacity: 1, x: 0, transition: { duration: 0.5, ease: 'easeInOut' } },
@@ -971,7 +966,6 @@ const QuestionnaireForm = ({ initialGender }) => {
 
             <div className="min-h-screen flex items-center justify-center py-[120px] px-4 sm:px-6 lg:px-8 bg-[#0C0C0C] overflow-hidden">
                 <AnimatePresence mode="wait">
-                    {/* ── Step 1: Body Measurements ── */}
                     {step === 1 && (
                         <motion.div key="step1" variants={formVariants} initial="hidden" animate="visible" exit="exit" className="w-full flex justify-center">
                             <BodyMeasurementForm
@@ -982,7 +976,6 @@ const QuestionnaireForm = ({ initialGender }) => {
                         </motion.div>
                     )}
 
-                    {/* ── Step 2: Tell Us About Yourself ── */}
                     {step === 2 && (
                         <motion.div key="step2" variants={formVariants} initial="hidden" animate="visible" exit="exit" className="w-full flex justify-center">
                             <UserDetailsForm
@@ -997,7 +990,6 @@ const QuestionnaireForm = ({ initialGender }) => {
                         </motion.div>
                     )}
 
-                    {/* ── Step 3: Workout Preferences ── */}
                     {step === 3 && (
                         <motion.div key="step3" variants={formVariants} initial="hidden" animate="visible" exit="exit" className="w-full flex justify-center">
                             <WorkoutPreferencesForm
@@ -1010,7 +1002,6 @@ const QuestionnaireForm = ({ initialGender }) => {
                         </motion.div>
                     )}
 
-                    {/* ── Step 4: Health & Training ── */}
                     {step === 4 && (
                         <motion.div key="step4" variants={formVariants} initial="hidden" animate="visible" exit="exit" className="w-full flex justify-center">
                             <HealthAndTrainingForm

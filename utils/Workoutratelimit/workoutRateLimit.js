@@ -27,7 +27,6 @@ export async function canGenerateWorkoutPlan(userId) {
         .limit(1)
         .maybeSingle();
 
-    // If there's a DB error or no plan has ever been generated, allow generation
     if (error || !lastPlan) {
         return {
             canGenerate: true,
@@ -67,7 +66,6 @@ export async function canGenerateWorkoutPlan(userId) {
 
 /**
  * Format remaining time into a human-readable string.
- * e.g. "2 days 5 hours" or "3 hours"
  *
  * @param {number} remainingDays
  * @param {number} remainingHours

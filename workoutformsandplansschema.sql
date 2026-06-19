@@ -1,6 +1,5 @@
 -- ============================================================
 -- workout_forms
--- Simplified schema: height as single decimal ft, weight kg only
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.workout_forms (
     id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -12,7 +11,6 @@ CREATE TABLE IF NOT EXISTS public.workout_forms (
     weight_unit                 TEXT NOT NULL DEFAULT 'kg',
 
     -- Height stored as a single decimal value in feet (e.g. 5.9, 6.1)
-    -- Removes the old height_feet / height_inches split columns
     height                      NUMERIC(5,2) NOT NULL CHECK (height > 0),
     height_unit                 TEXT NOT NULL DEFAULT 'ft',
 
@@ -96,6 +94,14 @@ CREATE TABLE IF NOT EXISTS public.workout_forms (
     -- Optional training style preferences
     exercise_preferences        TEXT[] NOT NULL DEFAULT '{}',
 
+    -- ── Status ───────────────────────────────────────────────
+    -- Tracks whether the AI generation for this form succeeded or failed.
+    -- pending    → form saved, generation not yet started
+    -- completed  → plan saved successfully in workout_plans
+    -- failed     → AI call or DB save failed
+    status                      TEXT NOT NULL DEFAULT 'pending'
+                                    CHECK (status IN ('pending', 'completed', 'failed')),
+
     -- ── Metadata ─────────────────────────────────────────────
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -114,6 +120,13 @@ CREATE TABLE IF NOT EXISTS public.workout_plans (
                         REFERENCES public.workout_forms(id) ON DELETE CASCADE,
 
     generated_plan  JSONB NOT NULL,
+
+    -- ── Status ───────────────────────────────────────────────
+    -- Reflects whether this plan is ready to be shown to the user.
+    -- active  → plan generated and available
+    -- deleted → user removed this plan (soft delete)
+    status          TEXT NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active', 'deleted')),
 
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -148,6 +161,11 @@ CREATE POLICY "Users can view their own forms"
     ON public.workout_forms FOR SELECT
     USING (auth.uid() = user_id);
 
+-- Needed so the API can update status to 'completed' or 'failed'
+CREATE POLICY "Users can update their own forms"
+    ON public.workout_forms FOR UPDATE
+    USING (auth.uid() = user_id);
+
 -- workout_plans policies
 CREATE POLICY "Users can insert their own plans"
     ON public.workout_plans FOR INSERT
@@ -155,4 +173,9 @@ CREATE POLICY "Users can insert their own plans"
 
 CREATE POLICY "Users can view their own plans"
     ON public.workout_plans FOR SELECT
+    USING (auth.uid() = user_id);
+
+-- Needed so the API can soft-delete plans (status = 'deleted')
+CREATE POLICY "Users can update their own plans"
+    ON public.workout_plans FOR UPDATE
     USING (auth.uid() = user_id);

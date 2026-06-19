@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { useAuth } from "@/context/AuthContext";
@@ -10,20 +11,26 @@ import { toast } from "sonner";
 
 export default function HeroSection() {
     const { user, loading } = useAuth();
-
-    // Rate limit state — only fetched once the user is confirmed authenticated
+    const router = useRouter();
     const [rateLimitInfo, setRateLimitInfo] = useState(null);
+    const [rateLimitLoading, setRateLimitLoading] = useState(false);
+    const navigating = useRef(false);
 
     const fetchRateLimit = useCallback(async () => {
+        setRateLimitLoading(true);
         try {
             const res = await fetch("/api/check-rate-limit");
             if (res.ok) {
                 const data = await res.json();
                 setRateLimitInfo(data);
+                return data;
             }
         } catch {
-            // Fail open — don't block the button if the check itself errors
+
+        } finally {
+            setRateLimitLoading(false);
         }
+        return null;
     }, []);
 
     useEffect(() => {
@@ -32,19 +39,37 @@ export default function HeroSection() {
         }
     }, [loading, user, fetchRateLimit]);
 
-    const handleGeneratePlan = (e) => {
-        // Authenticated but still within 72-hour window -> show toast, don't navigate
-        if (user && rateLimitInfo && !rateLimitInfo.canGenerate) {
-            e.preventDefault();
-            toast.error("Plan generation unavailable", {
-                description: `You already generated a workout plan. Your next plan will be available in ${rateLimitInfo.remainingTimeLabel}.`,
-                duration: 5000,
-            });
+    const handleGeneratePlan = useCallback(async () => {
+        if (!user) {
+            router.push("/login");
+            return;
         }
-    };
 
-    // Guest -> /login, authenticated -> /plan-builder
-    const planHref = !user ? "/login" : "/plan-builder";
+        if (navigating.current) return;
+        navigating.current = true;
+
+        try {
+            let info = rateLimitInfo;
+            if (info === null) {
+                info = await fetchRateLimit();
+            }
+
+            if (info && !info.canGenerate) {
+                toast.error("Plan generation unavailable", {
+                    description: `You already generated a workout plan. Your next plan will be available in ${info.remainingTimeLabel}.`,
+                    duration: 5000,
+                });
+                return;
+            }
+
+            router.push("/plan-builder");
+        } finally {
+            navigating.current = false;
+        }
+    }, [user, rateLimitInfo, fetchRateLimit, router]);
+
+    // Derive button state
+    const isButtonLoading = !loading && user && (rateLimitLoading && rateLimitInfo === null);
 
     return (
         <section className="relative w-full min-h-screen h-auto flex flex-col items-center justify-center overflow-hidden py-16 md:h-screen md:py-0">
@@ -61,22 +86,16 @@ export default function HeroSection() {
                     {!loading && (
                         <>
                             {user ? (
-                                /* Authenticated — show avatar */
                                 <UserAvatar />
                             ) : (
-                                /* Guest — show Login + Signup */
                                 <>
                                     <a href="/login">
-                                        <Button
-                                            className="h-9 sm:h-11 rounded-full border border-white/20 text-white bg-transparent hover:bg-[#B1F82A] hover:text-black hover:border-[#B1F82A] transition-all duration-300 px-4 sm:px-6 text-sm sm:text-base font-semibold"
-                                        >
+                                        <Button className="h-9 sm:h-11 rounded-full border border-white/20 text-white bg-transparent hover:bg-[#B1F82A] hover:text-black hover:border-[#B1F82A] transition-all duration-300 px-4 sm:px-6 text-sm sm:text-base font-semibold">
                                             Login
                                         </Button>
                                     </a>
                                     <a href="/signup">
-                                        <Button
-                                            className="h-9 sm:h-11 rounded-full bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 px-4 sm:px-6 text-sm sm:text-base font-semibold shadow-lg shadow-[#B1F82A]/20 transition-all duration-300"
-                                        >
+                                        <Button className="h-9 sm:h-11 rounded-full bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 px-4 sm:px-6 text-sm sm:text-base font-semibold shadow-lg shadow-[#B1F82A]/20 transition-all duration-300">
                                             Sign Up
                                         </Button>
                                     </a>
@@ -111,14 +130,14 @@ export default function HeroSection() {
                         Start your transformation today!
                     </p>
                     <div className="mt-8">
-                        <a href={planHref} onClick={handleGeneratePlan}>
-                            <Button
-                                size="xl"
-                                className="bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 transition-all duration-300 shadow-lg hover:shadow-xl"
-                            >
-                                Generate workout plan
-                            </Button>
-                        </a>
+                        <Button
+                            size="xl"
+                            onClick={handleGeneratePlan}
+                            disabled={isButtonLoading}
+                            className="bg-[#B1F82A] text-black hover:bg-[#B1F82A]/90 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-70 disabled:cursor-wait"
+                        >
+                            {isButtonLoading ? "Checking..." : "Generate workout plan"}
+                        </Button>
                     </div>
                 </div>
 
